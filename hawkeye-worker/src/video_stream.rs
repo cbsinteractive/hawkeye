@@ -12,10 +12,10 @@ use gstreamer_app as gst_app;
 use hawkeye_core::models::{Codec, Container, VideoMode};
 use lazy_static::lazy_static;
 use log::{debug, info};
+use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::io::Cursor;
 
 lazy_static! {
     pub(crate) static ref LATEST_FRAME: CowCell<Option<Vec<u8>>> = CowCell::new(None);

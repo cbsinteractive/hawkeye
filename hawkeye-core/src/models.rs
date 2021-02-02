@@ -1,12 +1,7 @@
-use color_eyre::eyre::WrapErr;
 use color_eyre::{eyre::eyre, Result};
-use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
-use std::time::Duration;
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -29,30 +24,6 @@ impl Watcher {
             Ok(self.source.is_valid()?)
         } else {
             Err(eyre!("{} not recognized as a valid URL!", self.slate_url))
-        }
-    }
-
-    pub fn slate(&self) -> Result<Box<dyn Read>> {
-        if self.slate_url.starts_with("http://") || self.slate_url.starts_with("https://") {
-            debug!("Loading slate from url");
-            let res = ureq::get(self.slate_url.as_str())
-                .timeout(Duration::from_secs(10))
-                .timeout_connect(500)
-                .call();
-            if res.error() {
-                return Err(color_eyre::eyre::eyre!(
-                    "HTTP error ({}) while calling URL of backend: {}",
-                    res.status(),
-                    self.slate_url
-                ));
-            }
-            Ok(Box::new(res.into_reader()))
-        } else {
-            debug!("Loading slate from file");
-            let path = self.slate_url.replace("file://", "");
-            Ok(Box::new(
-                File::open(path).wrap_err("Could not open slate file")?,
-            ))
         }
     }
 }

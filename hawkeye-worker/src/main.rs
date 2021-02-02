@@ -2,6 +2,7 @@ mod actions;
 mod config;
 mod img_detector;
 mod metrics;
+mod slate;
 mod video_stream;
 
 use crate::actions::{ActionExecutor, Executors};
@@ -70,7 +71,7 @@ fn main() -> Result<()> {
         "Starting pipeline at rtp://0.0.0.0:{}",
         watcher.source.ingest_port
     );
-    let detector = SlateDetector::new(&mut watcher.slate()?)?;
+    let detector = SlateDetector::new(&mut slate::load_img(watcher.slate_url.as_str())?)?;
     create_pipeline(
         detector,
         watcher.source.ingest_port,

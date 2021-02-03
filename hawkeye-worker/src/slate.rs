@@ -1,3 +1,4 @@
+use crate::video_stream::VideoStream;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use image::imageops::FilterType;
@@ -12,24 +13,28 @@ use std::time::Duration;
 
 pub const SLATE_SIZE: (u32, u32) = (213, 120);
 const MEGABYTES: usize = 1024 * 1024;
+const VIDEO_FILE_EXTENSIONS: [&str; 2] = ["mp4", "mkv"];
 
 pub fn load_img(url: &str) -> Result<Box<dyn Read>> {
     let temp_file: TempFile = Url::new(url).try_into()?;
 
-    // TODO: if video:
-    //      extract_video_frame return a buffer already in 213x120
-
-    let path = temp_file.full_path();
-    debug!("Loading slate image from file: {}", path);
-    let img = image::open(path.as_str())
-        .wrap_err("Could not open image")?
-        .resize_exact(SLATE_SIZE.0, SLATE_SIZE.1, FilterType::Triangle);
-    let mut contents = Vec::new();
-    img.write_to(&mut contents, ImageFormat::Png)
-        .wrap_err("Could not write to temp file")?;
+    let contents = if temp_file.is_video() {
+        let mut pipeline = FrameCapture::new(temp_file, SLATE_SIZE);
+        pipeline.get_first_frame_contents()?
+    } else {
+        let path = temp_file.full_path();
+        debug!("Loading slate image from file: {}", path);
+        let img = image::open(path.as_str())
+            .wrap_err("Could not open image")?
+            .resize_exact(SLATE_SIZE.0, SLATE_SIZE.1, FilterType::Triangle);
+        let mut contents = Vec::new();
+        img.write_to(&mut contents, ImageFormat::Png)
+            .wrap_err("Could not write to temp file")?;
+        contents
+    };
 
     if log::max_level() <= log::Level::Debug {
-        let mut f = TempFile::new("dubug", "png")?;
+        let mut f = TempFile::new("debug", "png")?;
         f.write_all(contents.as_slice())?;
         debug!("Wrote to debug file: {}", f.full_path())
     }
@@ -37,7 +42,7 @@ pub fn load_img(url: &str) -> Result<Box<dyn Read>> {
     Ok(Box::new(Cursor::new(contents)))
 }
 
-trait FileLike {
+pub trait FileLike {
     fn full_path(&self) -> String;
 
     fn extension(&self) -> Result<String> {
@@ -94,8 +99,10 @@ impl TempFile {
         })
     }
 
-    fn file_path(name: &str, ext: &str) -> String {
-        format!("/tmp/hwk_{}_{}.{}", process::id(), name, ext)
+    fn is_video(&self) -> bool {
+        VIDEO_FILE_EXTENSIONS
+            .iter()
+            .any(|v| v.to_string() == self.extension().unwrap_or_else(|_| String::new()))
     }
 
     fn write_all<R: Read>(&mut self, mut reader: R) -> Result<()> {
@@ -109,6 +116,10 @@ impl TempFile {
             }
         }
         Ok(())
+    }
+
+    fn file_path(name: &str, ext: &str) -> String {
+        format!("/tmp/hwk_{}_{}.{}", process::id(), name, ext)
     }
 }
 
@@ -144,5 +155,29 @@ impl TryFrom<Url> for TempFile {
         };
 
         Ok(f)
+    }
+}
+
+pub struct FrameCapture {
+    source: TempFile,
+    frame_size: (u32, u32),
+}
+
+impl FrameCapture {
+    pub fn new(source: TempFile, frame_size: (u32, u32)) -> Self {
+        Self { source, frame_size }
+    }
+
+    pub fn get_first_frame_contents(&mut self) -> Result<Vec<u8>> {
+        let pipeline = format!(
+            "uridecodebin uri=file://{} ! videoconvert ! videoscale ! capsfilter caps=\"video/x-raw, width={}, height={}\"",
+            self.source.full_path(),
+            self.frame_size.0,
+            self.frame_size.1
+        );
+        for frame in VideoStream::new(pipeline) {
+            return Ok(frame?);
+        }
+        Err(color_eyre::eyre::eyre!("Failed to capture video frame"))
     }
 }

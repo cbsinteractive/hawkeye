@@ -14,7 +14,7 @@ use lazy_static::lazy_static;
 use log::{debug, info};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 
 lazy_static! {
@@ -209,4 +209,179 @@ pub fn main_loop(
     pipeline.set_state(gst::State::Null)?;
 
     Ok(())
+}
+
+pub struct VideoStream {
+    pipeline_description: String,
+}
+
+impl VideoStream {
+    pub fn new<S: AsRef<str>>(pipeline_description: S) -> Self {
+        Self {
+            pipeline_description: String::from(pipeline_description.as_ref()),
+        }
+    }
+}
+
+impl IntoIterator for VideoStream {
+    type Item = Result<Vec<u8>>;
+    type IntoIter = VideoStreamIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let (sender, receiver) = channel();
+
+        debug!("Creating GStreamer Pipeline..");
+        let pipeline = gst::parse_launch(
+            format!(
+                "{} ! pngenc snapshot=false ! appsink name=sink",
+                self.pipeline_description
+            )
+            .as_str(),
+        )
+        .expect("Pipeline description invalid, cannot create")
+        .downcast::<gst::Pipeline>()
+        .expect("Expected a gst::Pipeline");
+
+        // Get access to the appsink element.
+        let appsink = pipeline
+            .get_by_name("sink")
+            .expect("Sink element not found")
+            .downcast::<gst_app::AppSink>()
+            .expect("Sink element is expected to be an appsink!");
+
+        appsink
+            .set_property("sync", &false)
+            .expect("Failed to disable gst pipeline sync");
+        appsink.set_callbacks(
+            gst_app::AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    // Pull the sample in question out of the appsink's buffer.
+                    let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
+                    let buffer_ref = sample.get_buffer().ok_or_else(|| {
+                        gst_element_error!(
+                            appsink,
+                            gst::ResourceError::Failed,
+                            ("Failed to get buffer from appsink")
+                        );
+
+                        if let Err(err) = sender.send(Err(color_eyre::eyre::eyre!(
+                            "Failed to get buffer from appsink"
+                        ))) {
+                            log::error!("Could not send message in stream: {}", err)
+                        }
+
+                        gst::FlowError::Error
+                    })?;
+
+                    // At this point, buffer is only a reference to an existing memory region somewhere.
+                    // When we want to access its content, we have to map it while requesting the required
+                    // mode of access (read, read/write).
+                    // This type of abstraction is necessary, because the buffer in question might not be
+                    // on the machine's main memory itself, but rather in the GPU's memory.
+                    // So mapping the buffer makes the underlying memory region accessible to us.
+                    // See: https://gstreamer.freedesktop.org/documentation/plugin-development/advanced/allocation.html
+                    let buffer = buffer_ref.map_readable().map_err(|_| {
+                        gst_element_error!(
+                            appsink,
+                            gst::ResourceError::Failed,
+                            ("Failed to map buffer readable")
+                        );
+
+                        if let Err(err) = sender.send(Err(color_eyre::eyre::eyre!(
+                            "Failed to map buffer readable"
+                        ))) {
+                            log::error!("Could not send message in stream: {}", err)
+                        }
+
+                        gst::FlowError::Error
+                    })?;
+
+                    match sender.send(Ok(buffer.to_vec())) {
+                        Ok(_) => Ok(gst::FlowSuccess::Ok),
+                        Err(_) => {
+                            log::debug!("Returning EOS in pipeline callback fn");
+                            Err(gst::FlowError::Eos)
+                        }
+                    }
+                })
+                .build(),
+        );
+
+        let bus = pipeline
+            .get_bus()
+            .expect("Pipeline without bus. Shouldn't happen!");
+
+        pipeline
+            .set_state(gst::State::Playing)
+            .expect("Cannot start pipeline");
+        info!("Pipeline started: {}", self.pipeline_description);
+
+        VideoStreamIterator {
+            description: self.pipeline_description,
+            receiver,
+            pipeline,
+            bus,
+        }
+    }
+}
+
+pub struct VideoStreamIterator {
+    description: String,
+    receiver: Receiver<Result<Vec<u8>>>,
+    pipeline: gst::Pipeline,
+    bus: gst::Bus,
+}
+
+impl Iterator for VideoStreamIterator {
+    type Item = Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.receiver.try_recv() {
+                Ok(event) => return Some(event),
+                Err(TryRecvError::Empty) => {
+                    // check if there is some error in the bus
+                    if let Some(msg) = self.bus.pop() {
+                        use gst::MessageView;
+
+                        match msg.view() {
+                            MessageView::Eos(..) => {
+                                // The End-of-stream message is posted when the stream is done, which in our case
+                                // happens immediately after matching the slate image because we return
+                                // gst::FlowError::Eos then.
+                                return None;
+                            }
+                            MessageView::Error(err) => {
+                                let error_msg = ErrorMessage {
+                                    src: msg
+                                        .get_src()
+                                        .map(|s| String::from(s.get_path_string()))
+                                        .unwrap_or_else(|| String::from("None")),
+                                    error: err.get_error().to_string(),
+                                    debug: err.get_debug(),
+                                    source: err.get_error(),
+                                };
+                                log::error!("Error returned by pipeline: {:?}", error_msg);
+                                return None;
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                Err(TryRecvError::Disconnected) => {
+                    log::debug!("The Pipeline channel is disconnected: {}", self.description);
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+impl Drop for VideoStreamIterator {
+    fn drop(&mut self) {
+        if let Err(_) = self.pipeline.set_state(gst::State::Null) {
+            log::error!("Could not stop pipeline");
+        }
+        log::debug!("Pipeline stopped!");
+    }
 }

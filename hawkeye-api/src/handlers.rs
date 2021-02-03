@@ -9,7 +9,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use uuid::Uuid;
-use warp::http::header::{CONTENT_TYPE, CACHE_CONTROL};
+use warp::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use warp::http::{HeaderValue, StatusCode};
 use warp::hyper::Body;
 use warp::reply;

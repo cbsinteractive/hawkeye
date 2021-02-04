@@ -5,8 +5,6 @@ use load_image::{Image, ImageData};
 use std::io::Read;
 
 pub struct SlateDetector {
-    width: usize,
-    height: usize,
     slate: DssimImage<f32>,
     similarity_algorithm: dssim::Dssim,
 }
@@ -20,8 +18,6 @@ impl SlateDetector {
         let slate = similarity_algorithm.create_image(&slate_img).unwrap();
 
         Ok(Self {
-            width: slate_img.width(),
-            height: slate_img.height(),
             slate,
             similarity_algorithm,
         })
@@ -36,10 +32,6 @@ impl SlateDetector {
         let val = (val * 1000f64) as u32;
 
         val <= 900u32
-    }
-
-    pub fn required_image_size(&self) -> (usize, usize) {
-        (self.width, self.height)
     }
 }
 

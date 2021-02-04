@@ -25,11 +25,11 @@ pub fn load_img(url: &str) -> Result<Box<dyn Read>> {
         let path = temp_file.full_path();
         debug!("Loading slate image from file: {}", path);
         let img = image::open(path.as_str())
-            .wrap_err("Could not open image")?
+            .wrap_err("Failed to open image")?
             .resize_exact(SLATE_SIZE.0, SLATE_SIZE.1, FilterType::Triangle);
         let mut contents = Vec::new();
         img.write_to(&mut contents, ImageFormat::Png)
-            .wrap_err("Could not write to temp file")?;
+            .wrap_err("Failed to write to temp file")?;
         contents
     };
 
@@ -87,14 +87,14 @@ impl TempFile {
     pub fn new<S: AsRef<str>, T: AsRef<str>>(name: S, ext: T) -> Result<Self> {
         let path = Self::file_path(name.as_ref(), ext.as_ref());
         Ok(Self {
-            file: File::create(path.as_str()).wrap_err("Could not create temp file")?,
+            file: File::create(path.as_str()).wrap_err("Failed to create temp file")?,
             path,
         })
     }
 
     pub fn from_original<S: AsRef<str>>(full_path: S) -> Result<Self> {
         Ok(Self {
-            file: File::open(full_path.as_ref()).wrap_err("Could not open provided path")?,
+            file: File::open(full_path.as_ref()).wrap_err("Failed open provided path")?,
             path: String::from(full_path.as_ref()),
         })
     }

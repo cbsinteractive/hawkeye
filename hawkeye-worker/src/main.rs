@@ -9,7 +9,7 @@ use crate::actions::{ActionExecutor, Executors};
 use crate::config::AppConfig;
 use crate::img_detector::SlateDetector;
 use crate::metrics::run_metrics_service;
-use crate::video_stream::{create_pipeline, main_loop};
+use crate::video_stream::{process_frames, RtpServer};
 use color_eyre::Result;
 use gstreamer as gst;
 use hawkeye_core::models::Watcher;
@@ -67,19 +67,17 @@ fn main() -> Result<()> {
     })
     .expect("Error setting termination handler");
 
+    let detector = SlateDetector::new(&mut slate::load_img(watcher.slate_url.as_str())?)?;
     log::info!(
         "Starting pipeline at rtp://0.0.0.0:{}",
         watcher.source.ingest_port
     );
-    let detector = SlateDetector::new(&mut slate::load_img(watcher.slate_url.as_str())?)?;
-    create_pipeline(
-        detector,
+
+    let server = RtpServer::new(
         watcher.source.ingest_port,
         watcher.source.container,
         watcher.source.codec,
-        sender.clone(),
-    )
-    .and_then(|pipeline| main_loop(pipeline, running, sender))?;
+    );
 
-    Ok(())
+    process_frames(server, detector, running, sender)
 }

@@ -25,6 +25,16 @@ lazy_static! {
         "Number of times we searched for slate in the stream"
     )
     .unwrap();
+    pub static ref SIMILARITY_EXECUTION_DURATION: Histogram = register_histogram!(
+        "similarity_execution_seconds",
+        "Seconds it took to execute the similarity algorithm"
+    )
+    .unwrap();
+    pub static ref FRAME_PROCESSING_DURATION: Histogram = register_histogram!(
+        "frame_processing_seconds",
+        "Seconds it took to execute the whole frame processing block"
+    )
+    .unwrap();
     pub static ref HTTP_CALL_DURATION: Histogram = register_histogram!(
         "http_call_action_execution_seconds",
         "Seconds it took to execute the HTTP call"

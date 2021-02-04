@@ -67,7 +67,7 @@ fn main() -> Result<()> {
     })
     .expect("Error setting termination handler");
 
-    let detector = SlateDetector::new(&mut slate::load_img(watcher.slate_url.as_str())?)?;
+    let detector = SlateDetector::new(&slate::load_img(watcher.slate_url.as_str())?)?;
     log::info!(
         "Starting pipeline at rtp://0.0.0.0:{}",
         watcher.source.ingest_port

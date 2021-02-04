@@ -17,7 +17,6 @@ use gstreamer_app as gst_app;
 use hawkeye_core::models::{Codec, Container, VideoMode};
 use lazy_static::lazy_static;
 use log::{debug, info};
-use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -43,16 +42,15 @@ pub enum Event {
 }
 
 pub fn process_frames(
-    source: impl Iterator<Item = Result<Option<Vec<u8>>>>,
+    frame_source: impl Iterator<Item = Result<Option<Vec<u8>>>>,
     detector: SlateDetector,
     running: Arc<AtomicBool>,
     action_sink: Sender<Event>,
 ) -> Result<()> {
     let black_image = include_bytes!("../../resources/black_120px.jpg");
-    let mut black_image = Cursor::new(black_image.to_vec());
-    let black_detector = SlateDetector::new(&mut black_image)?;
+    let black_detector = SlateDetector::new(black_image)?;
 
-    for frame in source {
+    for frame in frame_source {
         let frame_processing_timer = FRAME_PROCESSING_DURATION.start_timer();
         let local_buffer = match frame? {
             Some(b) => b,

@@ -6,7 +6,7 @@ use image::ImageFormat;
 use log::debug;
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
-use std::io::{Cursor, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
 use std::time::Duration;
@@ -15,7 +15,7 @@ pub const SLATE_SIZE: (u32, u32) = (213, 120);
 const MEGABYTES: usize = 1024 * 1024;
 const VIDEO_FILE_EXTENSIONS: [&str; 2] = ["mp4", "mkv"];
 
-pub fn load_img(url: &str) -> Result<Box<dyn Read>> {
+pub fn load_img(url: &str) -> Result<Vec<u8>> {
     let temp_file: TempFile = Url::new(url).try_into()?;
 
     let contents = if temp_file.is_video() {
@@ -39,7 +39,7 @@ pub fn load_img(url: &str) -> Result<Box<dyn Read>> {
         debug!("Wrote to debug file: {}", f.full_path())
     }
 
-    Ok(Box::new(Cursor::new(contents)))
+    Ok(contents)
 }
 
 pub trait FileLike {

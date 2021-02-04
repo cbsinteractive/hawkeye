@@ -2,7 +2,6 @@ use color_eyre::Result;
 use dssim::{DssimImage, ToRGBAPLU, RGBAPLU};
 use imgref::{Img, ImgVec};
 use load_image::{Image, ImageData};
-use std::io::Read;
 
 pub struct SlateDetector {
     slate: DssimImage<f32>,
@@ -10,11 +9,9 @@ pub struct SlateDetector {
 }
 
 impl SlateDetector {
-    pub fn new<R: Read>(slate: &mut R) -> Result<Self> {
-        let mut buffer = Vec::new();
-        slate.read_to_end(&mut buffer).unwrap();
+    pub fn new(slate: &[u8]) -> Result<Self> {
         let similarity_algorithm = dssim::Dssim::new();
-        let slate_img = load_data(buffer.as_slice())?;
+        let slate_img = load_data(slate)?;
         let slate = similarity_algorithm.create_image(&slate_img).unwrap();
 
         Ok(Self {

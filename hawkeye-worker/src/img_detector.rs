@@ -69,7 +69,11 @@ mod test {
     fn compare_equal_images() {
         let mut slate =
             File::open("../resources/slate_120px.jpg").expect("Missing file in resources folder");
-        let detector = SlateDetector::new(&mut slate).unwrap();
+        let mut buffer = Vec::new();
+        slate
+            .read_to_end(&mut buffer)
+            .expect("Failed to write to buffer");
+        let detector = SlateDetector::new(buffer.as_slice()).unwrap();
         let slate_img = read_bytes("../resources/slate_120px.jpg");
 
         assert!(detector.is_match(slate_img.as_slice()));
@@ -79,7 +83,11 @@ mod test {
     fn compare_diff_images() {
         let mut slate =
             File::open("../resources/slate_120px.jpg").expect("Missing file in resources folder");
-        let detector = SlateDetector::new(&mut slate).unwrap();
+        let mut buffer = Vec::new();
+        slate
+            .read_to_end(&mut buffer)
+            .expect("Failed to write to buffer");
+        let detector = SlateDetector::new(buffer.as_slice()).unwrap();
         let frame_img = read_bytes("../resources/non-slate_120px.jpg");
 
         assert_eq!(detector.is_match(frame_img.as_slice()), false);

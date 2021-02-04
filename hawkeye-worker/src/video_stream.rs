@@ -50,14 +50,20 @@ pub fn process_frames(
     let black_image = include_bytes!("../../resources/black_120px.jpg");
     let black_detector = SlateDetector::new(black_image)?;
 
+    let mut empty_iterations = 0;
     for frame in frame_source {
         let frame_processing_timer = FRAME_PROCESSING_DURATION.start_timer();
         let local_buffer = match frame? {
-            Some(b) => b,
+            Some(contents) => {
+                log::trace!("Empty iterations: {}", empty_iterations);
+                empty_iterations = 0;
+                contents
+            },
             None => {
                 if !running.load(Ordering::SeqCst) {
                     break;
                 } else {
+                    empty_iterations += 1;
                     thread::sleep(Duration::from_millis(100));
                     continue;
                 }
@@ -242,7 +248,11 @@ impl IntoIterator for VideoStream {
                     log::trace!("Frame extracted from pipeline");
 
                     match sender.try_send(Ok(Some(buffer.to_vec()))) {
-                        Ok(_) | Err(TrySendError::Full(_)) => Ok(gst::FlowSuccess::Ok),
+                        Ok(_) => Ok(gst::FlowSuccess::Ok),
+                        Err(TrySendError::Full(_)) => {
+                            log::trace!("Channel is full, discarded frame");
+                            Ok(gst::FlowSuccess::Ok)
+                        }
                         Err(TrySendError::Disconnected(_)) => {
                             log::debug!("Returning EOS in pipeline callback fn");
                             Err(gst::FlowError::Eos)

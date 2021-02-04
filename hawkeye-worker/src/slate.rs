@@ -49,7 +49,7 @@ pub trait FileLike {
         Ok(String::from(
             Path::new(self.full_path().as_str())
                 .extension()
-                .ok_or(color_eyre::eyre::eyre!("File does not have extension"))?
+                .ok_or_else(|| color_eyre::eyre::eyre!("File does not have extension"))?
                 .to_str()
                 .unwrap(),
         ))
@@ -102,14 +102,14 @@ impl TempFile {
     fn is_video(&self) -> bool {
         VIDEO_FILE_EXTENSIONS
             .iter()
-            .any(|v| v.to_string() == self.extension().unwrap_or_else(|_| String::new()))
+            .any(|v| *v == self.extension().unwrap_or_else(|_| String::new()))
     }
 
     fn write_all<R: Read>(&mut self, mut reader: R) -> Result<()> {
         let mut buffer = Vec::with_capacity(5 * MEGABYTES);
         loop {
             let p = reader.read_to_end(&mut buffer)?;
-            self.file.write(buffer.as_slice())?;
+            self.file.write_all(buffer.as_slice())?;
             buffer.clear();
             if p == 0 {
                 break;

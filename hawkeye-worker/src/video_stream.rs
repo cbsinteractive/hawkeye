@@ -1,5 +1,3 @@
-// Based on https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/blob/master/examples/src/bin/thumbnail.rs
-
 use crate::img_detector::SlateDetector;
 use crate::metrics::{
     FOUND_CONTENT_COUNTER, FOUND_SLATE_COUNTER, FRAME_PROCESSING_DURATION,
@@ -58,7 +56,7 @@ pub fn process_frames(
                 log::trace!("Empty iterations: {}", empty_iterations);
                 empty_iterations = 0;
                 contents
-            },
+            }
             None => {
                 if !running.load(Ordering::SeqCst) {
                     break;
@@ -336,7 +334,7 @@ impl Iterator for VideoStreamIterator {
 
 impl Drop for VideoStreamIterator {
     fn drop(&mut self) {
-        if let Err(_) = self.pipeline.set_state(gst::State::Null) {
+        if self.pipeline.set_state(gst::State::Null).is_err() {
             log::error!("Could not stop pipeline");
         }
         log::debug!("Pipeline stopped!");

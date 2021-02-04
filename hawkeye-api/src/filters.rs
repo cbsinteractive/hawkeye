@@ -16,7 +16,7 @@ pub fn v1(
         .or(watcher_start(client.clone()))
         .or(watcher_stop(client.clone()))
         .or(watcher_video_frame(client.clone()))
-        .or(healthcheck(client.clone()))
+        .or(healthcheck(client))
         .recover(handle_rejection)
 }
 
@@ -135,7 +135,7 @@ async fn handle_rejection(
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
-    } else if let Some(_) = err.find::<auth::NoAuth>() {
+    } else if err.find::<auth::NoAuth>().is_some() {
         code = StatusCode::UNAUTHORIZED;
     } else if let Some(missing) = err.find::<warp::reject::MissingHeader>() {
         if missing.name() == "authorization" {
@@ -143,7 +143,7 @@ async fn handle_rejection(
         } else {
             code = StatusCode::BAD_REQUEST;
         }
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
     } else {
         log::debug!("Unhandled rejection: {:?}", err);

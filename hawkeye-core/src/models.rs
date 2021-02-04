@@ -117,10 +117,6 @@ impl PartialEq for FakeAction {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
-
-    fn ne(&self, _other: &Self) -> bool {
-        true
-    }
 }
 
 // #[cfg(test)]

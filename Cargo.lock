@@ -1334,6 +1334,7 @@ dependencies = [
  "mockito",
  "pretty_env_logger",
  "prometheus",
+ "rand 0.8.3",
  "serde_json",
  "sn_fake_clock",
  "structopt",

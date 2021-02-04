@@ -4,11 +4,12 @@ use color_eyre::Result;
 use image::imageops::FilterType;
 use image::ImageFormat;
 use log::debug;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::process;
 use std::time::Duration;
 
 pub const SLATE_SIZE: (u32, u32) = (213, 120);
@@ -119,7 +120,12 @@ impl TempFile {
     }
 
     fn file_path(name: &str, ext: &str) -> String {
-        format!("/tmp/hwk_{}_{}.{}", process::id(), name, ext)
+        let rand_string: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(10)
+            .map(char::from)
+            .collect();
+        format!("/tmp/hwk_{}_{}.{}", rand_string, name, ext)
     }
 }
 

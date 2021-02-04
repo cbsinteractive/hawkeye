@@ -31,6 +31,7 @@ tokio = { version = "0.2", features = ["full"] }
 warp = "0.2"
 concread = "0.2.1"
 crossbeam = "0.8.0"
+rand = "0.8"
 
 [dev-dependencies]
 sn_fake_clock = "0.4"

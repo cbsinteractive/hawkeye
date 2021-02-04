@@ -1,0 +1,19 @@
+name: Trigger Production Deployment
+
+on:
+  release:
+    types: [ created ]
+
+env:
+  CARGO_TERM_COLOR: always
+  AUTH: ${{secrets.VP_DEPLOY_USER}}:${{secrets.VP_DEPLOY_SECRET}}
+  REPO: ${{secrets.DEPLOY_REPO}}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Prod
+        run: |
+          curl -XPOST -u "${AUTH}" -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${REPO}/dispatches -d '{"event_type": "prod"}'

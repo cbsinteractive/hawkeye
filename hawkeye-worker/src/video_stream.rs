@@ -1,10 +1,14 @@
 // Based on https://gitlab.freedesktop.org/gstreamer/gstreamer-rs/-/blob/master/examples/src/bin/thumbnail.rs
 
 use crate::img_detector::SlateDetector;
-use crate::metrics::{FOUND_CONTENT_COUNTER, FOUND_SLATE_COUNTER, SIMILARITY_EXECUTION_COUNTER, SIMILARITY_EXECUTION_DURATION, FRAME_PROCESSING_DURATION};
+use crate::metrics::{
+    FOUND_CONTENT_COUNTER, FOUND_SLATE_COUNTER, FRAME_PROCESSING_DURATION,
+    SIMILARITY_EXECUTION_COUNTER, SIMILARITY_EXECUTION_DURATION,
+};
 use crate::slate::SLATE_SIZE;
 use color_eyre::Result;
 use concread::CowCell;
+use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError, TrySendError};
 use derive_more::{Display, Error};
 use gst::gst_element_error;
 use gst::prelude::*;
@@ -15,7 +19,6 @@ use lazy_static::lazy_static;
 use log::{debug, info};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 
 lazy_static! {
@@ -38,7 +41,7 @@ pub enum Event {
 }
 
 pub fn process_frames(
-    source: impl IntoIterator<Item = Result<Vec<u8>>, IntoIter = VideoStreamIterator>,
+    source: impl Iterator<Item = Result<Vec<u8>>>,
     detector: SlateDetector,
     running: Arc<AtomicBool>,
     action_sink: Sender<Event>,
@@ -124,13 +127,13 @@ impl IntoIterator for RtpServer {
         let (width, height) = SLATE_SIZE;
         let pipeline_description = match (self.container, self.codec) {
             (Container::MpegTs, Codec::H264) => format!(
-                "udpsrc port={} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)MP2T, payload=(int)33\" ! .recv_rtp_sink_0 rtpbin ! rtpmp2tdepay ! tsdemux ! h264parse ! avdec_h264 ! videorate ! video/x-raw,framerate=8/1 ! videoconvert ! videoscale ! capsfilter caps=\"video/x-raw, width={}, height={}\"",
+                "udpsrc port={} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)MP2T, payload=(int)33\" ! .recv_rtp_sink_0 rtpbin ! rtpmp2tdepay ! tsdemux ! h264parse ! avdec_h264 ! videorate ! video/x-raw,framerate=10/1 ! videoconvert ! videoscale ! capsfilter caps=\"video/x-raw, width={}, height={}\"",
                 self.ingest_port,
                 width,
                 height
             ),
             (Container::RawVideo, Codec::H264) => format!(
-                "udpsrc port={} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96\" ! rtph264depay ! decodebin ! videorate ! video/x-raw,framerate=8/1 ! videoconvert ! videoscale ! capsfilter caps=\"video/x-raw, width={}, height={}\"",
+                "udpsrc port={} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96\" ! rtph264depay ! decodebin ! videorate ! video/x-raw,framerate=10/1 ! videoconvert ! videoscale ! capsfilter caps=\"video/x-raw, width={}, height={}\"",
                 self.ingest_port,
                 width,
                 height
@@ -160,7 +163,7 @@ impl IntoIterator for VideoStream {
     type IntoIter = VideoStreamIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        let (sender, receiver) = channel();
+        let (sender, receiver) = bounded(1);
 
         debug!("Creating GStreamer Pipeline..");
         let pipeline = gst::parse_launch(
@@ -229,9 +232,9 @@ impl IntoIterator for VideoStream {
                     })?;
                     log::trace!("Frame extracted from pipeline");
 
-                    match sender.send(Ok(buffer.to_vec())) {
-                        Ok(_) => Ok(gst::FlowSuccess::Ok),
-                        Err(_) => {
+                    match sender.try_send(Ok(buffer.to_vec())) {
+                        Ok(_) | Err(TrySendError::Full(_)) => Ok(gst::FlowSuccess::Ok),
+                        Err(TrySendError::Disconnected(_)) => {
                             log::debug!("Returning EOS in pipeline callback fn");
                             Err(gst::FlowError::Eos)
                         }

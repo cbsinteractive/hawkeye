@@ -4,9 +4,9 @@ use crate::metrics::{
 };
 use crate::video_stream::Event;
 use color_eyre::Result;
+use crossbeam::channel::Receiver;
 use hawkeye_core::models::{self, Action, HttpAuth, HttpCall, VideoMode};
 use log::{debug, error, info, warn};
-use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 #[cfg(test)]

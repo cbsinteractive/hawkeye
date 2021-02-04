@@ -176,7 +176,10 @@ impl FrameCapture {
             self.frame_size.1
         );
         for frame in VideoStream::new(pipeline) {
-            return Ok(frame?);
+            match frame? {
+                Some(contents) => return Ok(contents),
+                None => continue,
+            }
         }
         Err(color_eyre::eyre::eyre!("Failed to capture video frame"))
     }

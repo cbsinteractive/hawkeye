@@ -20,6 +20,8 @@ use log::{debug, info};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 lazy_static! {
     pub(crate) static ref LATEST_FRAME: CowCell<Option<Vec<u8>>> = CowCell::new(None);
@@ -41,7 +43,7 @@ pub enum Event {
 }
 
 pub fn process_frames(
-    source: impl Iterator<Item = Result<Vec<u8>>>,
+    source: impl Iterator<Item = Result<Option<Vec<u8>>>>,
     detector: SlateDetector,
     running: Arc<AtomicBool>,
     action_sink: Sender<Event>,
@@ -52,7 +54,17 @@ pub fn process_frames(
 
     for frame in source {
         let frame_processing_timer = FRAME_PROCESSING_DURATION.start_timer();
-        let local_buffer = frame?;
+        let local_buffer = match frame? {
+            Some(b) => b,
+            None => {
+                if !running.load(Ordering::SeqCst) {
+                    break;
+                } else {
+                    thread::sleep(Duration::from_millis(100));
+                    continue;
+                }
+            }
+        };
 
         let is_black = black_detector.is_match(local_buffer.as_slice());
 
@@ -91,7 +103,6 @@ pub fn process_frames(
 
         let took_in_seconds = frame_processing_timer.stop_and_record();
         log::trace!("Frame processing took {} seconds", took_in_seconds);
-
         if !running.load(Ordering::SeqCst) {
             break;
         }
@@ -120,7 +131,7 @@ impl RtpServer {
 }
 
 impl IntoIterator for RtpServer {
-    type Item = Result<Vec<u8>>;
+    type Item = Result<Option<Vec<u8>>>;
     type IntoIter = VideoStreamIterator;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -159,7 +170,7 @@ impl VideoStream {
 }
 
 impl IntoIterator for VideoStream {
-    type Item = Result<Vec<u8>>;
+    type Item = Result<Option<Vec<u8>>>;
     type IntoIter = VideoStreamIterator;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -199,7 +210,7 @@ impl IntoIterator for VideoStream {
                             ("Failed to get buffer from appsink")
                         );
 
-                        if let Err(err) = sender.send(Err(color_eyre::eyre::eyre!(
+                        if let Err(err) = sender.try_send(Err(color_eyre::eyre::eyre!(
                             "Failed to get buffer from appsink"
                         ))) {
                             log::error!("Could not send message in stream: {}", err)
@@ -222,7 +233,7 @@ impl IntoIterator for VideoStream {
                             ("Failed to map buffer readable")
                         );
 
-                        if let Err(err) = sender.send(Err(color_eyre::eyre::eyre!(
+                        if let Err(err) = sender.try_send(Err(color_eyre::eyre::eyre!(
                             "Failed to map buffer readable"
                         ))) {
                             log::error!("Could not send message in stream: {}", err)
@@ -232,7 +243,7 @@ impl IntoIterator for VideoStream {
                     })?;
                     log::trace!("Frame extracted from pipeline");
 
-                    match sender.try_send(Ok(buffer.to_vec())) {
+                    match sender.try_send(Ok(Some(buffer.to_vec()))) {
                         Ok(_) | Err(TrySendError::Full(_)) => Ok(gst::FlowSuccess::Ok),
                         Err(TrySendError::Disconnected(_)) => {
                             log::debug!("Returning EOS in pipeline callback fn");
@@ -263,53 +274,55 @@ impl IntoIterator for VideoStream {
 
 pub struct VideoStreamIterator {
     description: String,
-    receiver: Receiver<Result<Vec<u8>>>,
+    receiver: Receiver<Result<Option<Vec<u8>>>>,
     pipeline: gst::Pipeline,
     bus: gst::Bus,
 }
 
 impl Iterator for VideoStreamIterator {
-    type Item = Result<Vec<u8>>;
+    type Item = Result<Option<Vec<u8>>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.receiver.try_recv() {
-                Ok(event) => return Some(event),
-                Err(TryRecvError::Empty) => {
-                    // check if there is some error in the bus
-                    if let Some(msg) = self.bus.pop() {
-                        use gst::MessageView;
+        match self.receiver.try_recv() {
+            Ok(event) => return Some(event),
+            Err(TryRecvError::Empty) => {
+                // Check if there are errors in the GStreamer pipeline itself.
+                if let Some(msg) = self.bus.pop() {
+                    use gst::MessageView;
 
-                        match msg.view() {
-                            MessageView::Eos(..) => {
-                                // The End-of-stream message is posted when the stream is done, which in our case
-                                // happens immediately after matching the slate image because we return
-                                // gst::FlowError::Eos then.
-                                return None;
-                            }
-                            MessageView::Error(err) => {
-                                let error_msg = ErrorMessage {
-                                    src: msg
-                                        .get_src()
-                                        .map(|s| String::from(s.get_path_string()))
-                                        .unwrap_or_else(|| String::from("None")),
-                                    error: err.get_error().to_string(),
-                                    debug: err.get_debug(),
-                                    source: err.get_error(),
-                                };
-                                log::error!("Error returned by pipeline: {:?}", error_msg);
-                                return None;
-                            }
-                            _ => (),
+                    match msg.view() {
+                        MessageView::Eos(..) => {
+                            // The End-of-stream message is posted when the stream is done, which in our case
+                            // happens immediately after matching the slate image because we return
+                            // gst::FlowError::Eos then.
+                            return None;
                         }
+                        MessageView::Error(err) => {
+                            let error_msg = ErrorMessage {
+                                src: msg
+                                    .get_src()
+                                    .map(|s| String::from(s.get_path_string()))
+                                    .unwrap_or_else(|| String::from("None")),
+                                error: err.get_error().to_string(),
+                                debug: err.get_debug(),
+                                source: err.get_error(),
+                            };
+                            log::error!("Error returned by pipeline: {:?}", error_msg);
+                            // TODO: Should return a proper error here, returning `None` will simply stop the iterator.
+                            return None;
+                        }
+                        _ => (),
                     }
                 }
-                Err(TryRecvError::Disconnected) => {
-                    log::debug!("The Pipeline channel is disconnected: {}", self.description);
-                    return None;
-                }
+            }
+            Err(TryRecvError::Disconnected) => {
+                log::debug!("The Pipeline channel is disconnected: {}", self.description);
+                return None;
             }
         }
+        // Nothing to report in this iteration.
+        // Frames could not be captured, but there are no errors in the pipeline.
+        Some(Ok(None))
     }
 }
 

@@ -81,52 +81,7 @@ pub fn build_deployment(watcher_id: &str, ingest_port: u32) -> Deployment {
                     "restartPolicy": "Always",
                     "terminationGracePeriodSeconds": 5,
                     "containers": [
-                        {
-                            "name": "hawkeye-app",
-                            "imagePullPolicy": "IfNotPresent",
-                            "image": DOCKER_IMAGE.as_str(),
-                            "args": [
-                                "/config/watcher.json"
-                            ],
-                            "env": [
-                                {
-                                    "name": "RUST_LOG",
-                                    "valueFrom": {
-                                        "configMapKeyRef": {
-                                            "name": configmap_name(watcher_id),
-                                            "key": "log_level"
-                                        }
-                                    }
-                                }
-                            ],
-                            "resources": {
-                                "limits": {
-                                    "cpu": "2000m",
-                                    "memory": "70Mi"
-                                },
-                                "requests": {
-                                    "cpu": "1150m",
-                                    "memory": "50Mi"
-                                }
-                            },
-                            "ports": [
-                                {
-                                    "containerPort": ingest_port,
-                                    "protocol": "UDP"
-                                },
-                                {
-                                    "containerPort": deployment_metrics_port(),
-                                    "protocol": "TCP"
-                                }
-                            ],
-                            "volumeMounts": [
-                                {
-                                    "mountPath": "/config",
-                                    "name": "config",
-                                    "readOnly": true
-                                }
-                            ]
-                        }
+                        container_spec(watcher_id, ingest_port)
                     ],
                     "volumes": [
                         {
@@ -147,6 +102,56 @@ pub fn build_deployment(watcher_id: &str, ingest_port: u32) -> Deployment {
         }
     }))
     .unwrap()
+}
+
+/// Returns a fragment of the container specification
+pub fn container_spec(watcher_id: &str, ingest_port: u32) -> serde_json::Value {
+    json!({
+        "name": "hawkeye-app",
+        "imagePullPolicy": "IfNotPresent",
+        "image": DOCKER_IMAGE.as_str(),
+        "args": [
+            "/config/watcher.json"
+        ],
+        "env": [
+            {
+                "name": "RUST_LOG",
+                "valueFrom": {
+                    "configMapKeyRef": {
+                        "name": configmap_name(watcher_id),
+                        "key": "log_level"
+                    }
+                }
+            }
+        ],
+        "resources": {
+            "limits": {
+                "cpu": "2000m",
+                "memory": "70Mi"
+            },
+            "requests": {
+                "cpu": "1150m",
+                "memory": "50Mi"
+            }
+        },
+        "ports": [
+            {
+                "containerPort": ingest_port,
+                "protocol": "UDP"
+            },
+            {
+                "containerPort": deployment_metrics_port(),
+                "protocol": "TCP"
+            }
+        ],
+        "volumeMounts": [
+            {
+                "mountPath": "/config",
+                "name": "config",
+                "readOnly": true
+            }
+        ]
+    })
 }
 
 /// Builds an idempotent name for the `Service` based on the `watcher_id`.

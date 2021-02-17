@@ -1,5 +1,6 @@
 use crate::config::NAMESPACE;
 use crate::templates;
+use crate::templates::container_spec;
 use hawkeye_core::models::{Status, Watcher};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{ConfigMap, Pod, Service};
@@ -91,6 +92,81 @@ pub async fn create_watcher(
         reply::json(&watcher),
         StatusCode::CREATED,
     ))
+}
+
+pub async fn update_watcher(id: String, client: Client) -> Result<impl warp::Reply, Infallible> {
+    log::debug!("v1.update_watcher: {}", id);
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), &NAMESPACE);
+    let deployment = match deployments.get(&templates::deployment_name(&id)).await {
+        Ok(d) => d,
+        Err(_) => {
+            return Ok(reply::with_status(
+                reply::json(&json!({})),
+                StatusCode::NOT_FOUND,
+            ))
+        }
+    };
+
+    // We use the ConfigMap as source of truth for what are the watchers we have
+    let config_maps_client: Api<ConfigMap> = Api::namespaced(client.clone(), &NAMESPACE);
+    let config_map = match config_maps_client
+        .get(&templates::configmap_name(&id))
+        .await
+    {
+        Ok(c) => c,
+        Err(_) => {
+            return Ok(reply::with_status(
+                reply::json(&json!({})),
+                StatusCode::NOT_FOUND,
+            ))
+        }
+    };
+
+    let mut watcher: Watcher =
+        serde_json::from_str(config_map.data.unwrap().get("watcher.json").unwrap()).unwrap();
+    let watcher_status = deployment.get_watcher_status();
+    if watcher_status != Status::Ready {
+        return Ok(reply::with_status(
+            reply::json(
+                &json!({"message": "The Watcher must be stopped before the upgrade can be applied"}),
+            ),
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    watcher.status = Some(watcher_status);
+
+    let patch_params = PatchParams::default();
+    let spec_updated = json!({
+        "spec": {
+            "template": {
+                "spec": {
+                    "containers": [
+                        container_spec(&id, watcher.source.ingest_port)
+                    ]
+                }
+            }
+        }
+    });
+
+    match deployments
+        .patch(
+            deployment.metadata.name.as_ref().unwrap(),
+            &patch_params,
+            serde_json::to_vec(&spec_updated).unwrap(),
+        )
+        .await
+    {
+        Ok(_) => Ok(reply::with_status(reply::json(&watcher), StatusCode::OK)),
+        Err(e) => {
+            let msg: String = format!("Error while calling Kubernetes API: {:?}", e);
+            log::error!("{}", msg);
+            let error_body = json!({ "message": msg });
+            return Ok(reply::with_status(
+                reply::json(&error_body),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
+    }
 }
 
 pub async fn get_watcher(id: String, client: Client) -> Result<impl warp::Reply, Infallible> {

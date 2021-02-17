@@ -13,6 +13,7 @@ pub fn v1(
         .or(watcher_create(client.clone()))
         .or(watcher_get(client.clone()))
         .or(watcher_delete(client.clone()))
+        .or(watcher_update(client.clone()))
         .or(watcher_start(client.clone()))
         .or(watcher_stop(client.clone()))
         .or(watcher_video_frame(client.clone()))
@@ -63,6 +64,17 @@ pub fn watcher_delete(
         .and(warp::delete())
         .and(with_client(client))
         .and_then(handlers::delete_watcher)
+}
+
+/// POST /v1/watchers/{id}
+pub fn watcher_update(
+    client: Client,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path!("v1" / "watchers" / String)
+        .and(auth::verify())
+        .and(warp::post())
+        .and(with_client(client))
+        .and_then(handlers::update_watcher)
 }
 
 /// POST /v1/watchers/{id}/start

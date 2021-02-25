@@ -94,8 +94,8 @@ pub async fn create_watcher(
     ))
 }
 
-pub async fn update_watcher(id: String, client: Client) -> Result<impl warp::Reply, Infallible> {
-    log::debug!("v1.update_watcher: {}", id);
+pub async fn upgrade_watcher(id: String, client: Client) -> Result<impl warp::Reply, Infallible> {
+    log::debug!("v1.upgrade_watcher: {}", id);
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), &NAMESPACE);
     let deployment = match deployments.get(&templates::deployment_name(&id)).await {
         Ok(d) => d,

@@ -10,7 +10,7 @@ servers:
 paths:
   "/v1/watchers":
     get:
-      summary: List all watchers.
+      summary: List all watchers
       operationId: handlers::watchers_list
       responses:
         "200":
@@ -25,7 +25,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/WatcherFull'
     post:
-      summary: Create a new Watcher.
+      summary: Create a new Watcher
       operationId: handlers::create_watcher
       requestBody:
         content:
@@ -47,7 +47,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/WatcherIdPath'
     get:
-      summary: Get a specific Watcher.
+      summary: Get a Watcher
       operationId: handlers::get_watcher
       responses:
         "200":
@@ -60,7 +60,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/WatcherFull'
     delete:
-      summary: Delete a specific Watcher.
+      summary: Delete a Watcher
       operationId: handlers::delete_watcher
       responses:
         "200":
@@ -80,7 +80,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/WatcherIdPath'
     post:
-      summary: Start running the Watcher.
+      summary: Start the Watcher
       operationId: handlers::start_watcher
       responses:
         "200":
@@ -101,7 +101,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/WatcherIdPath'
     post:
-      summary: Stop the Watcher.
+      summary: Stop the Watcher
       operationId: handlers::stop_watcher
       responses:
         "200":
@@ -117,6 +117,22 @@ paths:
                     type: string
                     description: Description of successfull operation.
 
+
+  "/v1/watchers/{watcher_id}/video-frame":
+    parameters:
+      - $ref: '#/components/parameters/WatcherIdPath'
+    get:
+      summary: Latest video frame
+      description: Expose the latest video frame the Watcher has captured.
+      operationId: handlers::get_video_frame
+      responses:
+        "200":
+          description: The image bytes
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
 components:
 
   parameters:

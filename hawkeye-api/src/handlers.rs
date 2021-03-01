@@ -1,4 +1,4 @@
-use crate::config::NAMESPACE;
+use crate::config::{NAMESPACE, CALL_WATCHER_TIMEOUT};
 use crate::templates;
 use crate::templates::container_spec;
 use hawkeye_core::models::{Status, Watcher};
@@ -308,7 +308,7 @@ pub async fn get_video_frame(id: String, client: Client) -> Result<impl warp::Re
         .flatten()
     {
         let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(2))
+            .timeout(Duration::from_secs(*CALL_WATCHER_TIMEOUT))
             .build()
             .unwrap();
         // Try for new and old ports in pod

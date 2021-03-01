@@ -10,7 +10,7 @@ const FIXED_TOKEN_ENV: &str = "HAWKEYE_FIXED_TOKEN";
 const CALL_WATCHER_TIMEOUT_ENV: &str = "HAWKEYE_CALL_WATCHER_TIMEOUT_TOKEN";
 
 // Configuration defaults
-const DEFAULT_CALL_WATCHER_TIMEOUT: u32 = 2;
+const DEFAULT_CALL_WATCHER_TIMEOUT: u64 = 2;
 
 lazy_static! {
     /// Kubernetes namespace where the resources are managed (created/deleted/updated)
@@ -25,8 +25,8 @@ lazy_static! {
     pub static ref FIXED_TOKEN: String =
         std::env::var(FIXED_TOKEN_ENV).unwrap_or_else(|_| gen_token());
 
-    pub static ref CALL_WATCHER_TIMEOUT: u32 =
-        std::env::var(CALL_WATCHER_TIMEOUT_ENV).map(|val| val.parse::<u32>()).unwrap_or_else(|_| Ok(DEFAULT_CALL_WATCHER_TIMEOUT)).unwrap_or(DEFAULT_CALL_WATCHER_TIMEOUT);
+    pub static ref CALL_WATCHER_TIMEOUT: u64 =
+        std::env::var(CALL_WATCHER_TIMEOUT_ENV).map(|val| val.parse::<u64>()).unwrap_or_else(|_| Ok(DEFAULT_CALL_WATCHER_TIMEOUT)).unwrap_or(DEFAULT_CALL_WATCHER_TIMEOUT);
 
 }
 

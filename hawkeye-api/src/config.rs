@@ -3,9 +3,14 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::iter;
 
+// Environment variable names
 const NAMESPACE_ENV: &str = "HAWKEYE_NAMESPACE";
 const DOCKER_IMAGE_ENV: &str = "HAWKEYE_DOCKER_IMAGE";
 const FIXED_TOKEN_ENV: &str = "HAWKEYE_FIXED_TOKEN";
+const CALL_WATCHER_TIMEOUT_ENV: &str = "HAWKEYE_CALL_WATCHER_TIMEOUT_TOKEN";
+
+// Configuration defaults
+const DEFAULT_CALL_WATCHER_TIMEOUT: u32 = 2;
 
 lazy_static! {
     /// Kubernetes namespace where the resources are managed (created/deleted/updated)
@@ -19,6 +24,10 @@ lazy_static! {
     /// A fixed authentication token required by clients while calling the Hawkeye API
     pub static ref FIXED_TOKEN: String =
         std::env::var(FIXED_TOKEN_ENV).unwrap_or_else(|_| gen_token());
+
+    pub static ref CALL_WATCHER_TIMEOUT: u32 =
+        std::env::var(CALL_WATCHER_TIMEOUT_ENV).map(|val| val.parse::<u32>()).unwrap_or_else(|_| Ok(DEFAULT_CALL_WATCHER_TIMEOUT)).unwrap_or(DEFAULT_CALL_WATCHER_TIMEOUT);
+
 }
 
 /// In case the environment variable `HAWKEYE_FIXED_TOKEN` is not present, a

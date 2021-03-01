@@ -34,14 +34,9 @@ pub fn deployment_name(watcher_id: &str) -> String {
     format!("hawkeye-deploy-{}", watcher_id)
 }
 
-/// General reference to the deployment Pod metrics server
-pub fn deployment_metrics_port() -> u32 {
-    3030
-}
-
 /// Builds a `Deployment` configured to run the hawkeye-worker process.
 pub fn build_deployment(watcher_id: &str, ingest_port: u32) -> Deployment {
-    let metric_port_str = deployment_metrics_port().to_string();
+    let metric_port_str = ingest_port.to_string();
     serde_json::from_value(json!({
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -127,7 +122,7 @@ pub fn container_spec(watcher_id: &str, ingest_port: u32) -> serde_json::Value {
         "resources": {
             "limits": {
                 "cpu": "2000m",
-                "memory": "70Mi"
+                "memory": "100Mi"
             },
             "requests": {
                 "cpu": "1150m",
@@ -140,7 +135,7 @@ pub fn container_spec(watcher_id: &str, ingest_port: u32) -> serde_json::Value {
                 "protocol": "UDP"
             },
             {
-                "containerPort": deployment_metrics_port(),
+                "containerPort": ingest_port,
                 "protocol": "TCP"
             }
         ],

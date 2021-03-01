@@ -98,7 +98,7 @@ fn latest_frame() -> impl warp::Reply {
     Ok(response)
 }
 
-pub fn run_metrics_service() {
+pub fn run_metrics_service(metrics_port: u16) {
     let mut runtime = Builder::new()
         .threaded_scheduler()
         .thread_name("metrics_app")
@@ -111,5 +111,5 @@ pub fn run_metrics_service() {
             .map(get_metric_contents)
             .or(warp::path("latest_frame").map(latest_frame)),
     );
-    runtime.block_on(warp::serve(routes).run(([0, 0, 0, 0], 3030)));
+    runtime.block_on(warp::serve(routes).run(([0, 0, 0, 0], metrics_port)));
 }

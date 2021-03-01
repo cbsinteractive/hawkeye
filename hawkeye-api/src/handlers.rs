@@ -9,6 +9,7 @@ use kube::{Api, Client};
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::time::Duration;
 use uuid::Uuid;
 use warp::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use warp::http::{HeaderValue, StatusCode};
@@ -262,6 +263,23 @@ pub async fn get_watcher(id: String, client: Client) -> Result<impl warp::Reply,
 
 pub async fn get_video_frame(id: String, client: Client) -> Result<impl warp::Reply, Infallible> {
     let mut resp = warp::reply::Response::new(Body::empty());
+
+    // We use the ConfigMap as source of truth for what are the watchers we have
+    let config_maps_client: Api<ConfigMap> = Api::namespaced(client.clone(), &NAMESPACE);
+    let config_map = match config_maps_client
+        .get(&templates::configmap_name(&id))
+        .await
+    {
+        Ok(c) => c,
+        Err(_) => {
+            log::debug!("ConfigMap object not found for this watcher: {}", id);
+            *resp.status_mut() = StatusCode::NOT_FOUND;
+            return Ok(resp);
+        }
+    };
+    let watcher: Watcher =
+        serde_json::from_str(config_map.data.unwrap().get("watcher.json").unwrap()).unwrap();
+
     let deployments_client: Api<Deployment> = Api::namespaced(client.clone(), &NAMESPACE);
     let deployment = match deployments_client
         .get(&templates::deployment_name(&id))
@@ -289,25 +307,36 @@ pub async fn get_video_frame(id: String, client: Client) -> Result<impl warp::Re
         .map(|ps| ps.pod_ip.clone())
         .flatten()
     {
-        let url = format!(
-            "http://{}:{}/latest_frame",
-            pod_ip,
-            templates::deployment_metrics_port()
-        );
-        log::debug!("Calling Pod using url: {}", url);
-        match reqwest::get(url.as_str()).await.unwrap().error_for_status() {
-            Ok(image_response) => {
-                let image_bytes = image_response.bytes().await.unwrap();
-                let headers = resp.headers_mut();
-                headers.insert(CONTENT_TYPE, HeaderValue::from_static("image/png"));
-                headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
-                *resp.body_mut() = Body::from(image_bytes);
-            }
-            Err(err) => {
-                log::error!("Error calling PodIP: {:?}", err);
-                *resp.status_mut() = StatusCode::EXPECTATION_FAILED;
+        let http_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap();
+        // Try for new and old ports in pod
+        for port in vec![watcher.source.ingest_port, 3030] {
+            let url = format!("http://{}:{}/latest_frame", pod_ip, port);
+            log::info!("Calling Pod using url: {}", url);
+            match http_client
+                .get(url.as_str())
+                .send()
+                .await
+                .unwrap()
+                .error_for_status()
+            {
+                Ok(image_response) => {
+                    let image_bytes = image_response.bytes().await.unwrap();
+                    let headers = resp.headers_mut();
+                    headers.insert(CONTENT_TYPE, HeaderValue::from_static("image/png"));
+                    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                    *resp.body_mut() = Body::from(image_bytes);
+                    return Ok(resp);
+                }
+                Err(_) => {
+                    continue;
+                }
             }
         }
+        log::error!("Error calling Pod using old and new urls");
+        *resp.status_mut() = StatusCode::EXPECTATION_FAILED;
     } else {
         log::debug!("Not able to get Pod IP");
         *resp.status_mut() = StatusCode::EXPECTATION_FAILED;

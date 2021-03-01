@@ -57,7 +57,8 @@ fn main() -> Result<()> {
     });
 
     // starts metrics web app
-    thread::spawn(run_metrics_service);
+    let metrics_port = watcher.source.ingest_port as u16;
+    thread::spawn(move || run_metrics_service(metrics_port));
 
     let running = Arc::new(AtomicBool::new(true));
 

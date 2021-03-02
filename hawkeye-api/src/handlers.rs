@@ -314,12 +314,21 @@ pub async fn get_video_frame(id: String, client: Client) -> Result<impl warp::Re
         // Try for new and old ports in pod
         for port in vec![watcher.source.ingest_port, 3030] {
             let url = format!("http://{}:{}/latest_frame", pod_ip, port);
+
             log::info!("Calling Pod using url: {}", url);
-            match http_client
+            let response=  match http_client
                 .get(url.as_str())
                 .send()
-                .await
-                .unwrap()
+                .await {
+                Ok(r) => r,
+                Err(error) => {
+                    log::error!("Could not call {} endpoint: {:?}", url, error);
+                    *resp.status_mut() = StatusCode::EXPECTATION_FAILED;
+                    return Ok(resp);
+                }
+            };
+
+            match response
                 .error_for_status()
             {
                 Ok(image_response) => {

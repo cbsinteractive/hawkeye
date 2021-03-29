@@ -373,7 +373,7 @@ pub async fn start_watcher(id: String, client: Client) -> Result<impl warp::Repl
             reply::json(&json!({
                 "message": "Watcher is already running"
             })),
-            StatusCode::CONFLICT,
+            StatusCode::OK,
         )),
         Status::Pending => Ok(reply::with_status(
             reply::json(&json!({
@@ -450,7 +450,7 @@ pub async fn stop_watcher(id: String, client: Client) -> Result<impl warp::Reply
             reply::json(&json!({
                 "message": "Watcher is already stopped"
             })),
-            StatusCode::CONFLICT,
+            StatusCode::OK,
         )),
         Status::Pending => Ok(reply::with_status(
             reply::json(&json!({
